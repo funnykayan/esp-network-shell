@@ -10,7 +10,16 @@ WiFiServer shellServer(2323); // port 2323 for the shell
 WiFiClient shellClient;
 
 String inputBuffer = ""; 
-String USER = "admin"; // this is the user, gets changed with usercr command
+String currentUser = "admin";
+String hostname = "esp32";
+
+#define MAX_SCRIPT_LINES 20
+
+String script[MAX_SCRIPT_LINES];
+int scriptLineCount = 0;
+bool recordingScript = false;
+bool runningScript = false;
+
 
 LiquidCrystal_I2C lcd(0x27, 16, 2); // set the LCD I2C address
 
@@ -22,10 +31,23 @@ LiquidCrystal_I2C lcd(0x27, 16, 2); // set the LCD I2C address
 #define C_RED    "\033[31m"
 #define C_BOLD   "\033[1m"
 
-// LED state
+// led state or smth
 int ledPin = -1;
 
 // shell otuput funny stuff
+
+String formatUptime() {
+  unsigned long s = millis() / 1000;
+  unsigned int h = s / 3600;
+  unsigned int m = (s % 3600) / 60;
+  unsigned int sec = s % 60;
+
+  char buf[20];
+  snprintf(buf, sizeof(buf), "%02u:%02u:%02u", h, m, sec);
+  return String(buf);
+}
+
+
 void shellPrint(const String &s) {
   Serial.print(s);
   if (shellClient && shellClient.connected()) shellClient.print(s);
@@ -36,10 +58,15 @@ void shellPrintln(const String &s = "") {
 }
 
 void prompt() {
-  shellPrint(C_GREEN + USER + "@esp32" C_CYAN "> " C_RESET); // defining the prompt
+  shellPrint(
+    String(C_GREEN) + currentUser +
+    "@" + hostname +
+    C_CYAN + "> " +
+    C_RESET
+  );
 }
 
-// ---------- COMMANDS ----------
+
 void showHelp() { //le list of le commands
   shellPrintln(C_YELLOW "Commands:" C_RESET);
   shellPrintln(" help");
@@ -50,7 +77,19 @@ void showHelp() { //le list of le commands
   shellPrintln(" reboot");
   shellPrintln(" ledpinselect <pin>");
   shellPrintln(" ledpin <high|low>");
-  shellPrintln(" usercr <user>");
+  shellPrintln(" whoami");
+  shellPrintln(" uptime");
+  shellPrintln(" free");
+  shellPrintln(" gpio");
+  shellPrintln(" set user <name>");
+  shellPrintln(" set hostname <name>");
+  shellPrintln(" status");
+  shellPrintln(" script start");
+  shellPrintln(" script end");
+  shellPrintln(" script show");
+  shellPrintln(" script clear");
+  shellPrintln(" run");
+
 }
 
 void showInfo() { // boring info
@@ -101,9 +140,148 @@ void clearScreen() { // let there be clear terminal
 void handleCommand(String cmd) {
   cmd.trim();
 
+  if (recordingScript) {
+  if (cmd == "script end") {
+    recordingScript = false;
+    shellPrintln("Script recording stopped");
+  } else {
+    if (scriptLineCount < MAX_SCRIPT_LINES) {
+      script[scriptLineCount++] = cmd;
+      shellPrintln("Added: " + cmd);
+    } else {
+      shellPrintln(C_RED "Script buffer full" C_RESET);
+    }
+  }
+  return;
+  }
+
+
   if (cmd == "help") {
     showHelp();
   }
+
+  else if (cmd == "script start") {
+  scriptLineCount = 0;
+  recordingScript = true;
+  shellPrintln("Script recording started");
+  }
+
+  else if (cmd == "script show") {
+  if (scriptLineCount == 0) {
+    shellPrintln("Script is empty");
+    return;
+  }
+
+  for (int i = 0; i < scriptLineCount; i++) {
+    shellPrintln(String(i) + ": " + script[i]);
+  }
+  }
+
+  else if (cmd == "script clear") {
+  scriptLineCount = 0;
+  shellPrintln("Script cleared");
+  }
+
+  else if (cmd == "run") {
+  if (runningScript) {
+    shellPrintln(C_RED "Script already running" C_RESET);
+    return;
+  }
+
+  if (scriptLineCount == 0) {
+    shellPrintln("No script to run");
+    return;
+  }
+
+  runningScript = true;
+  shellPrintln(C_YELLOW "Running script..." C_RESET);
+
+  for (int i = 0; i < scriptLineCount; i++) {
+    shellPrintln(
+      C_CYAN "[" + String(i) + "] " + script[i] + C_RESET
+    );
+    handleCommand(script[i]);
+    delay(50);
+  }
+
+  runningScript = false;
+  shellPrintln(C_GREEN "Script finished" C_RESET);
+  }
+
+
+  else if (cmd == "whoami") {
+  shellPrintln(currentUser);
+  }
+
+  else if (cmd == "uptime") {
+  shellPrintln("Uptime: " + formatUptime());
+  }
+
+  else if (cmd == "free") {
+  shellPrintln("Heap free: " + String(ESP.getFreeHeap() / 1024) + " KB");
+  shellPrintln("Min ever: " + String(ESP.getMinFreeHeap() / 1024) + " KB");
+  }
+
+  else if (cmd == "gpio") {
+  shellPrintln("Safe GPIOs:");
+  shellPrintln("  4, 5, 18, 19, 21, 22, 23, 25, 26, 27, 32, 33");
+
+  if (ledPin >= 0) {
+    shellPrintln("LED pin selected: GPIO " + String(ledPin));
+  } else {
+    shellPrintln("LED pin selected: none");
+  }
+  }
+
+  else if (cmd.startsWith("set user ")) {
+  String newUser = cmd.substring(9);
+  newUser.trim();
+
+  if (newUser.length() == 0) {
+    shellPrintln(C_RED "Invalid username" C_RESET);
+  } else {
+    currentUser = newUser;
+    shellPrintln("User set to " + currentUser);
+  }
+  }
+
+  else if (cmd.startsWith("set hostname ")) {
+  String newHost = cmd.substring(13);
+  newHost.trim();
+
+  if (newHost.length() == 0) {
+    shellPrintln(C_RED "Invalid hostname" C_RESET);
+  } else {
+    hostname = newHost;
+    shellPrintln("Hostname set to " + hostname);
+  }
+  }
+
+  else if (cmd == "status") {
+  shellPrintln(C_YELLOW "System status:" C_RESET);
+
+  shellPrintln(" User:     " + currentUser);
+  shellPrintln(" Hostname: " + hostname);
+  shellPrintln(" Uptime:  " + formatUptime());
+
+  shellPrintln(" Heap:    " + String(ESP.getFreeHeap() / 1024) + " KB free");
+
+  if (WiFi.status() == WL_CONNECTED) {
+    shellPrintln(" WiFi:    connected");
+    shellPrintln(" IP:      " + WiFi.localIP().toString());
+    shellPrintln(" RSSI:    " + String(WiFi.RSSI()) + " dBm");
+  } else {
+    shellPrintln(" WiFi:    disconnected");
+  }
+
+  if (ledPin >= 0) {
+    shellPrintln(" LED pin: GPIO " + String(ledPin));
+  } else {
+    shellPrintln(" LED pin: none");
+  }
+  }
+
+
 
   else if (cmd == "license") {
     showLicense();
@@ -120,17 +298,6 @@ void handleCommand(String cmd) {
   else if (cmd.startsWith("echo ")) {
     shellPrintln(cmd.substring(5));
   }
-  
-  else if (cmd.startsWith("usercr ")) {
-    String newUser = cmd.substring(7);
-    newUser.trim();
-    if (newUser.length() == 0) {
-      shellPrintln(C_RED "Username cannot be empty" C_RESET);
-    } else {
-      USER = newUser;
-      shellPrintln(C_GREEN "Username changed to " + USER + C_RESET);
-    }
-  }
 
   else if (cmd == "time") {
     shellPrintln(String(millis()));
@@ -143,7 +310,13 @@ void handleCommand(String cmd) {
     ESP.restart();
   }
 
-  // ---- LED PIN SELECT ----
+  else if (cmd.startsWith("delay ")) {
+    int ms = cmd.substring(6).toInt();
+    shellPrintln("Delaying for " + String(ms) + " ms");
+    delay(ms);
+    shellPrintln("Delay complete");
+  }
+
   else if (cmd.startsWith("ledpinselect ")) {
     int pin = cmd.substring(13).toInt();
 
@@ -159,28 +332,51 @@ void handleCommand(String cmd) {
     shellPrintln(C_GREEN "LED pin set to GPIO " + String(ledPin) + C_RESET);
   }
 
-  // ---- LED CONTROL ----
   else if (cmd.startsWith("ledpin ")) {
+  String args = cmd.substring(7);
+  args.trim();
+
+  int pin = -1;
+  String state;
+
+  int spaceIndex = args.indexOf(' ');
+
+
+  if (spaceIndex != -1 && isDigit(args[0])) {
+    pin = args.substring(0, spaceIndex).toInt();
+    state = args.substring(spaceIndex + 1);
+  }
+  else {
     if (ledPin < 0) {
       shellPrintln(C_RED "No LED pin selected" C_RESET);
       return;
     }
-
-    String state = cmd.substring(7);
-    state.trim();
-
-    if (state == "high") {
-      digitalWrite(ledPin, HIGH);
-      shellPrintln("GPIO " + String(ledPin) + " -> HIGH");
-    }
-    else if (state == "low") {
-      digitalWrite(ledPin, LOW);
-      shellPrintln("GPIO " + String(ledPin) + " -> LOW");
-    }
-    else {
-      shellPrintln(C_RED "Usage: ledpin high|low" C_RESET);
-    }
+    pin = ledPin;
+    state = args;
   }
+
+  state.trim();
+
+  if (pin < 0) {
+    shellPrintln(C_RED "Invalid pin" C_RESET);
+    return;
+  }
+
+  pinMode(pin, OUTPUT);
+
+  if (state == "high") {
+    digitalWrite(pin, HIGH);
+    shellPrintln("GPIO " + String(pin) + " -> HIGH");
+  }
+  else if (state == "low") {
+    digitalWrite(pin, LOW);
+    shellPrintln("GPIO " + String(pin) + " -> LOW");
+  }
+  else {
+    shellPrintln(C_RED "Usage: ledpin [pin] high|low" C_RESET);
+  }
+  }
+
 
   else {
     shellPrintln(C_RED "Unknown command" C_RESET);
