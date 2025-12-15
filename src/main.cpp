@@ -3,8 +3,8 @@
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 
-const char* ssid = "TMNL-754055"; // ur wifi name (im adding ethernet soon)
-const char* pass = "LFFL7SV6W7959LUP"; // ur wifi password
+const char* ssid = "ssid"; // ur wifi name (im adding ethernet soon)
+const char* pass = "password"; // ur wifi password
 
 WiFiServer shellServer(2323); // port 2323 for the shell
 WiFiClient shellClient;
