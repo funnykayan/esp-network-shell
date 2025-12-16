@@ -82,6 +82,23 @@ to connect (windows):
 ncat (ur ip) 2323
 ```
 
+## Using the built-in MSBASIC-Style script system
+
+Run: ```script start``` to start recording commands to the script.
+
+Then input all of your commands (just built in commands that you can run in the shell) with a max of 20 lines to save RAM
+
+Run ```script end``` to end and save your script.
+
+Run ```script view``` to see your script.
+
+Run ```script clear``` to clear the script.
+
+Run ```run``` to run your script.
+
+
+
+
 to connect (templeos):
 idk bro
 
