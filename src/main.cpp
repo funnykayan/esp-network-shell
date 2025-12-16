@@ -10,6 +10,7 @@ WiFiServer shellServer(2323); // port 2323 for the shell
 WiFiClient shellClient;
 
 String inputBuffer = ""; 
+String USER = "admin"; // this is the user, gets changed with usercr command
 String currentUser = "admin";
 String hostname = "esp32";
 
