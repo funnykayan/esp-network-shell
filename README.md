@@ -81,6 +81,9 @@ to connect (windows):
 ```bash
 ncat (ur ip) 2323
 ```
+to connect (templeos):
+idk bro
+
 
 ## Using the built-in MSBASIC-Style script system
 
@@ -99,7 +102,5 @@ Run ```run``` to run your script.
 
 
 
-to connect (templeos):
-idk bro
 
 ## the rest u can figure it out by yourself
